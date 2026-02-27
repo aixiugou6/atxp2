@@ -75,9 +75,31 @@ class AccountPool:
         self._http = http
 
     def load(self) -> int:
-        """从 JSON 文件加载账号"""
-        with open(self._accounts_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        """从 JSON 文件加载账号
+
+        允许文件不存在或为空（返回 0），以便先启动服务再通过 /admin 注册写入账号池。
+        """
+        # 重新加载时先清空，避免重复追加
+        self._accounts = []
+
+        p = Path(self._accounts_file)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if not p.exists():
+            p.write_text("[]", encoding="utf-8")
+            logger.info("账号文件不存在，已初始化空账号池: %s", self._accounts_file)
+            logger.info("已加载 0 个账号")
+            return 0
+
+        try:
+            raw = p.read_text(encoding="utf-8").strip()
+            if not raw:
+                data = []
+            else:
+                data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("账号文件 JSON 解析失败，视为空账号池: %s", self._accounts_file)
+            data = []
+
         if isinstance(data, dict):
             data = [data]
 
@@ -252,6 +274,129 @@ def _oai_chunk(chunk_id: str, model: str, content: str = "", finish_reason: str 
         }],
     }
     return f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
+
+
+# ===================== Admin UI / APIs (新增) =====================ADMIN_KEY = os.environ.get("ADMIN_KEY", "")  # 为空则不做 admin 鉴权（不建议）
+
+def _check_admin(request: web.Request) -> bool:
+    if not ADMIN_KEY:
+        return True
+    k = request.headers.get("X-Admin-Key") or request.query.get("key") or ""
+    return k == ADMIN_KEY
+
+@web.middleware
+async def admin_auth_middleware(request: web.Request, handler):
+    if request.path.startswith("/admin"):
+        if not _check_admin(request):
+            return web.json_response({"error": "Invalid ADMIN_KEY"}, status=401)
+    return await handler(request)
+
+ADMIN_HTML_PATH = Path(__file__).parent / "web" / "admin.html"
+REGISTER_LOG = "/app/data/register.log"
+REGISTER_STATE = {"running": False, "pid": None, "started_at": None, "exit_code": None}
+
+def _accounts_path(app: web.Application) -> str:
+    # 依赖你现有 AccountPool 保存的 accounts file 路径字段
+    # 如果你的 AccountPool 字段名不是 _accounts_file，把这里改成正确字段即可
+    return app["pool"]._accounts_file
+
+async def admin_page(request: web.Request):
+    if not ADMIN_HTML_PATH.exists():
+        return web.Response(text="admin.html not found (missing web/admin.html)", status=500)
+    return web.FileResponse(path=str(ADMIN_HTML_PATH))
+
+async def admin_get_accounts(request: web.Request):
+    p = _accounts_path(request.app)
+    Path(p).parent.mkdir(parents=True, exist_ok=True)
+    if not Path(p).exists():
+        Path(p).write_text("[]", encoding="utf-8")
+    return web.json_response(json.loads(Path(p).read_text(encoding="utf-8")))
+
+async def admin_put_accounts(request: web.Request):
+    p = _accounts_path(request.app)
+    data = await request.json()
+    if not isinstance(data, (list, dict)):
+        return web.json_response({"error": "accounts 必须是 JSON 数组或对象"}, status=400)
+
+    Path(p).parent.mkdir(parents=True, exist_ok=True)
+    Path(p).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 重载账号池
+    request.app["pool"] = AccountPool(p)
+    request.app["pool"].load()
+    await request.app["pool"].start(request.app["http"])
+    return web.json_response({"ok": True})
+
+async def admin_register_start(request: web.Request):
+    if REGISTER_STATE["running"]:
+        return web.json_response({"error": "register 正在运行"}, status=409)
+
+    body = await request.json()
+    n = int(body.get("n", 5))
+    c = int(body.get("c", 2))
+    n = max(1, min(n, 200))
+    c = max(1, min(c, 10))
+
+    Path("/app/data").mkdir(parents=True, exist_ok=True)
+    Path(REGISTER_LOG).write_text("", encoding="utf-8")
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "register.py", "-n", str(n), "-c", str(c),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        cwd=str(Path(__file__).parent),
+        env=os.environ.copy(),
+    )
+
+    REGISTER_STATE.update({"running": True, "pid": proc.pid, "started_at": int(time.time()), "exit_code": None})
+
+    async def _pump():
+        try:
+            with open(REGISTER_LOG, "a", encoding="utf-8") as f:
+                while True:
+                    line = await proc.stdout.readline()
+                    if not line:
+                        break
+                    f.write(line.decode("utf-8", errors="replace"))
+                    f.flush()
+            code = await proc.wait()
+            REGISTER_STATE.update({"running": False, "exit_code": code})
+        except Exception as e:
+            with open(REGISTER_LOG, "a", encoding="utf-8") as f:
+                f.write(f"\n[pump-error] {e}\n")
+            REGISTER_STATE.update({"running": False, "exit_code": -1})
+
+    request.app.loop.create_task(_pump())
+    return web.json_response({"ok": True, "pid": proc.pid})
+
+async def admin_register_log(request: web.Request):
+    if not Path(REGISTER_LOG).exists():
+        return web.json_response({"log": "", "state": REGISTER_STATE})
+    data = Path(REGISTER_LOG).read_text(encoding="utf-8", errors="replace")
+    if len(data) > 200_000:
+        data = data[-200_000:]
+    return web.json_response({"log": data, "state": REGISTER_STATE})
+
+def _find_latest_results_accounts() -> str | None:
+    cand = sorted(glob.glob("results/accounts_*.json"), key=os.path.getmtime)
+    return cand[-1] if cand else None
+
+async def admin_register_sync(request: web.Request):
+    latest = _find_latest_results_accounts()
+    if not latest:
+        return web.json_response({"error": "未找到 results/accounts_*.json（请先运行注册）"}, status=404)
+
+    accounts_file = _accounts_path(request.app)
+    Path(accounts_file).parent.mkdir(parents=True, exist_ok=True)
+    Path(accounts_file).write_text(Path(latest).read_text(encoding="utf-8"), encoding="utf-8")
+
+    # 重载账号池
+    request.app["pool"] = AccountPool(accounts_file)
+    request.app["pool"].load()
+    await request.app["pool"].start(request.app["http"])
+
+    return web.json_response({"ok": True, "message": f"已同步 {latest} -> {accounts_file}"})
+# =================== Admin UI / APIs end ===================
 
 
 # ============================================================
@@ -589,8 +734,7 @@ async def on_cleanup(app: web.Application):
 def create_app(accounts_file: str, api_key: str = "") -> web.Application:
     pool = AccountPool(accounts_file)
     if pool.load() == 0:
-        logger.error("无可用账号")
-        sys.exit(1)
+        logger.warning("账号池为空：服务仍会启动。请访问 /admin 注册并同步账号后再调用 /v1/*")
     app = web.Application(middlewares=[admin_auth_middleware, auth_middleware])
     app["pool"] = pool
     app["api_key"] = api_key
@@ -625,126 +769,3 @@ if __name__ == "__main__":
         logger.info("API key 认证已启用")
     logger.info("ATXP 2API 启动: %s:%d", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None)
-
-# ===================== Admin UI / APIs (新增) =====================
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "")  # 为空则不做 admin 鉴权（不建议）
-
-def _check_admin(request: web.Request) -> bool:
-    if not ADMIN_KEY:
-        return True
-    k = request.headers.get("X-Admin-Key") or request.query.get("key") or ""
-    return k == ADMIN_KEY
-
-@web.middleware
-async def admin_auth_middleware(request: web.Request, handler):
-    if request.path.startswith("/admin"):
-        if not _check_admin(request):
-            return web.json_response({"error": "Invalid ADMIN_KEY"}, status=401)
-    return await handler(request)
-
-ADMIN_HTML_PATH = Path(__file__).parent / "web" / "admin.html"
-REGISTER_LOG = "/app/data/register.log"
-REGISTER_STATE = {"running": False, "pid": None, "started_at": None, "exit_code": None}
-
-def _accounts_path(app: web.Application) -> str:
-    # 依赖你现有 AccountPool 保存的 accounts file 路径字段
-    # 如果你的 AccountPool 字段名不是 _accounts_file，把这里改成正确字段即可
-    return app["pool"]._accounts_file
-
-async def admin_page(request: web.Request):
-    if not ADMIN_HTML_PATH.exists():
-        return web.Response(text="admin.html not found (missing web/admin.html)", status=500)
-    return web.FileResponse(path=str(ADMIN_HTML_PATH))
-
-async def admin_get_accounts(request: web.Request):
-    p = _accounts_path(request.app)
-    Path(p).parent.mkdir(parents=True, exist_ok=True)
-    if not Path(p).exists():
-        Path(p).write_text("[]", encoding="utf-8")
-    return web.json_response(json.loads(Path(p).read_text(encoding="utf-8")))
-
-async def admin_put_accounts(request: web.Request):
-    p = _accounts_path(request.app)
-    data = await request.json()
-    if not isinstance(data, (list, dict)):
-        return web.json_response({"error": "accounts 必须是 JSON 数组或对象"}, status=400)
-
-    Path(p).parent.mkdir(parents=True, exist_ok=True)
-    Path(p).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # 重载账号池
-    request.app["pool"] = AccountPool(p)
-    request.app["pool"].load()
-    await request.app["pool"].start(request.app["http"])
-    return web.json_response({"ok": True})
-
-async def admin_register_start(request: web.Request):
-    if REGISTER_STATE["running"]:
-        return web.json_response({"error": "register 正在运行"}, status=409)
-
-    body = await request.json()
-    n = int(body.get("n", 5))
-    c = int(body.get("c", 2))
-    n = max(1, min(n, 200))
-    c = max(1, min(c, 10))
-
-    Path("/app/data").mkdir(parents=True, exist_ok=True)
-    Path(REGISTER_LOG).write_text("", encoding="utf-8")
-
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, "register.py", "-n", str(n), "-c", str(c),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=str(Path(__file__).parent),
-        env=os.environ.copy(),
-    )
-
-    REGISTER_STATE.update({"running": True, "pid": proc.pid, "started_at": int(time.time()), "exit_code": None})
-
-    async def _pump():
-        try:
-            with open(REGISTER_LOG, "a", encoding="utf-8") as f:
-                while True:
-                    line = await proc.stdout.readline()
-                    if not line:
-                        break
-                    f.write(line.decode("utf-8", errors="replace"))
-                    f.flush()
-            code = await proc.wait()
-            REGISTER_STATE.update({"running": False, "exit_code": code})
-        except Exception as e:
-            with open(REGISTER_LOG, "a", encoding="utf-8") as f:
-                f.write(f"\n[pump-error] {e}\n")
-            REGISTER_STATE.update({"running": False, "exit_code": -1})
-
-    request.app.loop.create_task(_pump())
-    return web.json_response({"ok": True, "pid": proc.pid})
-
-async def admin_register_log(request: web.Request):
-    if not Path(REGISTER_LOG).exists():
-        return web.json_response({"log": "", "state": REGISTER_STATE})
-    data = Path(REGISTER_LOG).read_text(encoding="utf-8", errors="replace")
-    if len(data) > 200_000:
-        data = data[-200_000:]
-    return web.json_response({"log": data, "state": REGISTER_STATE})
-
-def _find_latest_results_accounts() -> str | None:
-    cand = sorted(glob.glob("results/accounts_*.json"), key=os.path.getmtime)
-    return cand[-1] if cand else None
-
-async def admin_register_sync(request: web.Request):
-    latest = _find_latest_results_accounts()
-    if not latest:
-        return web.json_response({"error": "未找到 results/accounts_*.json（请先运行注册）"}, status=404)
-
-    accounts_file = _accounts_path(request.app)
-    Path(accounts_file).parent.mkdir(parents=True, exist_ok=True)
-    Path(accounts_file).write_text(Path(latest).read_text(encoding="utf-8"), encoding="utf-8")
-
-    # 重载账号池
-    request.app["pool"] = AccountPool(accounts_file)
-    request.app["pool"].load()
-    await request.app["pool"].start(request.app["http"])
-
-    return web.json_response({"ok": True, "message": f"已同步 {latest} -> {accounts_file}"})
-# =================== Admin UI / APIs end ===================
