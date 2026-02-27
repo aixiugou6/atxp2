@@ -276,7 +276,8 @@ def _oai_chunk(chunk_id: str, model: str, content: str = "", finish_reason: str 
     return f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
 
 
-# ===================== Admin UI / APIs (新增) =====================ADMIN_KEY = os.environ.get("ADMIN_KEY", "")  # 为空则不做 admin 鉴权（不建议）
+# ===================== Admin UI / APIs (新增) =====================
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")  # 为空则不做 admin 鉴权（不建议）
 
 def _check_admin(request: web.Request) -> bool:
     if not ADMIN_KEY:
