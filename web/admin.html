@@ -5,82 +5,336 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ATXP2 管理台</title>
   <style>
-    body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:0;background:#0b1020;color:#e6e9f2}
-    header{padding:14px 18px;border-bottom:1px solid #223;display:flex;gap:10px;align-items:center}
-    header input{flex:1;max-width:520px;padding:10px;border-radius:10px;border:1px solid #223;background:#0f1630;color:#e6e9f2}
-    header button{padding:10px 12px;border-radius:10px;border:1px solid #223;background:#1a2550;color:#e6e9f2;cursor:pointer}
-    main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
-    .card{background:#0f1630;border:1px solid #223;border-radius:14px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    :root{
+      --bg:#070b18;
+      --panel:#0c1228;
+      --panel2:#0a1023;
+      --border:rgba(255,255,255,.08);
+      --border2:rgba(255,255,255,.12);
+      --text:#e8ebf7;
+      --muted:rgba(232,235,247,.72);
+      --muted2:rgba(232,235,247,.52);
+      --accent:#6ea8ff;
+      --accent2:#87f3c6;
+      --danger:#ff6b7a;
+      --warn:#ffd166;
+      --shadow:0 18px 60px rgba(0,0,0,.45);
+      --radius:18px;
+      --radius2:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      color:var(--text);
+      background:
+        radial-gradient(1200px 900px at 12% -10%, rgba(110,168,255,.18), transparent 60%),
+        radial-gradient(900px 700px at 98% 10%, rgba(135,243,198,.12), transparent 55%),
+        radial-gradient(900px 700px at 55% 120%, rgba(255,209,102,.10), transparent 55%),
+        var(--bg);
+    }
+    a{color:inherit}
+    .wrap{max-width:1280px;margin:0 auto;padding:18px 18px 28px}
+    .topbar{
+      display:flex;gap:14px;align-items:center;justify-content:space-between;
+      padding:14px 16px;border:1px solid var(--border);background:rgba(12,18,40,.72);
+      backdrop-filter: blur(10px);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      position:sticky;top:12px;z-index:10;
+    }
+    .brand{
+      display:flex;gap:12px;align-items:center;min-width:240px;
+    }
+    .logo{
+      width:34px;height:34px;border-radius:12px;
+      background: linear-gradient(135deg, rgba(110,168,255,.95), rgba(135,243,198,.7));
+      box-shadow:0 10px 30px rgba(110,168,255,.18);
+    }
+    .brand h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .brand .sub{font-size:12px;color:var(--muted2);margin-top:2px}
+    .statusRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill{
+      display:inline-flex;gap:8px;align-items:center;
+      padding:8px 10px;border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.8);
+      color:var(--muted);
+      font-size:12px;
+    }
+    .dot{width:8px;height:8px;border-radius:50%}
+    .dot.ok{background:var(--accent2);box-shadow:0 0 0 4px rgba(135,243,198,.12)}
+    .dot.bad{background:var(--danger);box-shadow:0 0 0 4px rgba(255,107,122,.12)}
+    .dot.warn{background:var(--warn);box-shadow:0 0 0 4px rgba(255,209,102,.12)}
+    .controls{
+      display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;
+    }
+    .input{
+      height:38px;min-width:260px;max-width:520px;width:min(520px, 46vw);
+      padding:0 12px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.86);
+      color:var(--text);
+      outline:none;
+    }
+    .input:focus{border-color:rgba(110,168,255,.45);box-shadow:0 0 0 4px rgba(110,168,255,.12)}
+    .btn{
+      height:38px;
+      padding:0 12px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.86);
+      color:var(--text);
+      cursor:pointer;
+      display:inline-flex;align-items:center;gap:8px;
+      transition:transform .08s ease, border-color .15s ease, background .15s ease;
+    }
+    .btn:hover{border-color:rgba(255,255,255,.18);background:rgba(12,18,40,.96)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{
+      border-color:rgba(110,168,255,.35);
+      background:linear-gradient(180deg, rgba(110,168,255,.22), rgba(10,16,35,.86));
+    }
+    .btn.good{
+      border-color:rgba(135,243,198,.35);
+      background:linear-gradient(180deg, rgba(135,243,198,.18), rgba(10,16,35,.86));
+    }
+    .btn.danger{
+      border-color:rgba(255,107,122,.35);
+      background:linear-gradient(180deg, rgba(255,107,122,.16), rgba(10,16,35,.86));
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+      .input{width:100%;min-width:0}
+      .brand{min-width:0}
+    }
+    .card{
+      border:1px solid var(--border);
+      background:rgba(12,18,40,.70);
+      backdrop-filter: blur(10px);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .cardHeader{
+      display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+      padding:14px 16px;border-bottom:1px solid var(--border);
+    }
+    .title{font-weight:700}
+    .desc{margin-top:4px;font-size:12px;color:var(--muted2);line-height:1.4}
+    .cardBody{padding:14px 16px}
+    textarea{
+      width:100%;
+      min-height:320px;
+      resize:vertical;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.86);
+      color:var(--text);
+      outline:none;
+      font-family:var(--mono);
+      font-size:12.5px;
+      line-height:1.5;
+    }
+    textarea:focus{border-color:rgba(110,168,255,.45);box-shadow:0 0 0 4px rgba(110,168,255,.12)}
+    pre{
+      margin:0;
+      min-height:320px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.86);
+      color:var(--text);
+      font-family:var(--mono);
+      font-size:12.5px;
+      line-height:1.5;
+      white-space:pre-wrap;
+      word-break:break-word;
+      overflow:auto;
+    }
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    textarea{width:100%;min-height:260px;border-radius:12px;border:1px solid #223;background:#0b1020;color:#e6e9f2;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    pre{background:#0b1020;border:1px solid #223;border-radius:12px;padding:10px;white-space:pre-wrap;word-break:break-word;min-height:200px}
-    .hint{opacity:.8;font-size:12px;line-height:1.5}
-    .ok{color:#9ef0b2}.bad{color:#ff9aa8}
-    input.small{width:90px}
+    .small{
+      height:38px;width:92px;
+      padding:0 10px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(10,16,35,.86);
+      color:var(--text);
+      outline:none;
+    }
+    .small:focus{border-color:rgba(110,168,255,.45);box-shadow:0 0 0 4px rgba(110,168,255,.12)}
+    .footerBar{
+      display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      margin-top:12px;
+    }
+    .hint{font-size:12px;color:var(--muted2);line-height:1.45}
+    .msg{font-size:12px}
+    .ok{color:var(--accent2)}
+    .bad{color:var(--danger)}
+    .toast{
+      position:fixed;right:18px;bottom:18px;z-index:50;
+      padding:12px 14px;border-radius:14px;
+      border:1px solid var(--border);
+      background:rgba(12,18,40,.88);
+      backdrop-filter: blur(10px);
+      box-shadow:var(--shadow);
+      max-width:min(520px, calc(100vw - 36px));
+      display:none;
+    }
+    .toast.show{display:block;animation:pop .16s ease-out}
+    @keyframes pop{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+    .kbd{
+      font-family:var(--mono);
+      padding:2px 6px;border-radius:8px;border:1px solid var(--border);
+      background:rgba(10,16,35,.86);color:var(--muted);
+    }
   </style>
 </head>
 <body>
-<header>
-  <div style="font-weight:700">ATXP2 管理台</div>
-  <input id="adminkey" placeholder="ADMIN_KEY（或用 ?key=xxx 打开）" />
-  <button onclick="loadAll()">刷新</button>
-</header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>ATXP2 管理台</h1>
+          <div class="sub">注册 / 账号池 / OpenAI 兼容 API 测试</div>
+        </div>
+      </div>
 
-<main>
-  <section class="card">
-    <div class="row">
-      <div style="font-weight:700">账号池（/app/data/accounts.json）</div>
-      <button onclick="loadAccounts()">加载</button>
-      <button onclick="saveAccounts()">保存</button>
-    </div>
-    <div class="hint">首次可保持为 []，之后点击“注册”会生成 results/accounts_*.json，再点“同步”写入账号池。</div>
-    <textarea id="accounts"></textarea>
-    <div id="accountsMsg" class="hint"></div>
-  </section>
+      <div class="statusRow">
+        <div class="pill"><span class="dot" id="dotService"></span><span id="svcText">服务状态：未知</span></div>
+        <div class="pill"><span class="dot" id="dotPool"></span><span id="poolText">账号：- / 可用：-</span></div>
+        <div class="pill"><span class="dot" id="dotReg"></span><span id="regText">注册：未知</span></div>
+      </div>
 
-  <section class="card">
-    <div class="row">
-      <div style="font-weight:700">一键注册（register.py）</div>
-      <label>数量 n <input class="small" id="n" type="number" value="5"></label>
-      <label>并发 c <input class="small" id="c" type="number" value="2"></label>
-      <button onclick="startRegister()">开始注册</button>
-      <button onclick="stopLog()">暂停日志</button>
+      <div class="controls">
+        <input id="adminkey" class="input" placeholder="ADMIN_KEY（或用 ?key=xxx 打开）" />
+        <button class="btn primary" onclick="loadAll()">刷新</button>
+      </div>
     </div>
-    <pre id="log"></pre>
-    <div class="row">
-      <button onclick="syncAccounts()">把最新 results/accounts_*.json 同步到 /app/data/accounts.json</button>
-      <span id="syncMsg" class="hint"></span>
-    </div>
-  </section>
 
-  <section class="card">
-    <div style="font-weight:700">API 测试</div>
-    <div class="row">
-      <button onclick="callStatus()">/status</button>
-      <button onclick="callModels()">/v1/models</button>
-      <button onclick="callChat()">/v1/chat/completions</button>
-    </div>
-    <pre id="apiOut"></pre>
-  </section>
+    <div class="grid">
+      <!-- Left: Accounts -->
+      <section class="card">
+        <div class="cardHeader">
+          <div>
+            <div class="title">账号池 <span class="kbd">/app/data/accounts.json</span></div>
+            <div class="desc">首次可保持为 <span class="kbd">[]</span>。注册会生成 <span class="kbd">results/accounts_*.json</span>，再点“同步”写回账号池。</div>
+          </div>
+          <div class="row">
+            <button class="btn" onclick="loadAccounts()">加载</button>
+            <button class="btn good" onclick="saveAccounts()">保存</button>
+          </div>
+        </div>
+        <div class="cardBody">
+          <textarea id="accounts" spellcheck="false"></textarea>
+          <div class="footerBar">
+            <div id="accountsMsg" class="msg hint"></div>
+            <div class="hint">小技巧：<span class="kbd">Ctrl/⌘ + A</span> 全选；<span class="kbd">Ctrl/⌘ + S</span> 保存</div>
+          </div>
+        </div>
+      </section>
 
-  <section class="card">
-    <div style="font-weight:700">说明</div>
-    <div class="hint">
-      1) 管理台需要 ADMIN_KEY（只保护 /admin 与 /admin/api/*）<br/>
-      2) Zeabur 请挂载 Volume 到 /app/data 持久化 accounts.json 与 register.log<br/>
-      3) /v1/* 是否需要 API_KEY 取决于你原项目逻辑（不改也行）
+      <!-- Right: Register -->
+      <section class="card">
+        <div class="cardHeader">
+          <div>
+            <div class="title">一键注册 <span class="kbd">register.py</span></div>
+            <div class="desc">点击开始后会启动后台进程，日志写入 <span class="kbd">/app/data/register.log</span>。</div>
+          </div>
+          <div class="row">
+            <label class="hint">数量 n</label>
+            <input class="small" id="n" type="number" value="5" min="1" max="200">
+            <label class="hint">并发 c</label>
+            <input class="small" id="c" type="number" value="2" min="1" max="10">
+            <button class="btn primary" onclick="startRegister()">开始</button>
+            <button class="btn" onclick="toggleAutoscroll()" id="autoBtn">自动滚动：开</button>
+          </div>
+        </div>
+        <div class="cardBody">
+          <pre id="log"></pre>
+          <div class="footerBar">
+            <button class="btn good" onclick="syncAccounts()">同步最新 results/accounts_*.json → /app/data/accounts.json</button>
+            <span id="syncMsg" class="msg hint"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Left bottom: API test -->
+      <section class="card">
+        <div class="cardHeader">
+          <div>
+            <div class="title">API 测试</div>
+            <div class="desc">快速测试 <span class="kbd">/status</span>、<span class="kbd">/v1/models</span>、<span class="kbd">/v1/chat/completions</span>。</div>
+          </div>
+          <div class="row">
+            <button class="btn" onclick="callStatus()">/status</button>
+            <button class="btn" onclick="callModels()">/v1/models</button>
+            <button class="btn" onclick="callChat()">/v1/chat/completions</button>
+          </div>
+        </div>
+        <div class="cardBody">
+          <pre id="apiOut"></pre>
+          <div class="footerBar">
+            <div class="hint">提示：如果 /v1/* 需要 API_KEY，请在你的调用端加 Bearer（UI 这里不自动加）。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right bottom: Notes -->
+      <section class="card">
+        <div class="cardHeader">
+          <div>
+            <div class="title">说明</div>
+            <div class="desc">常见问题与部署建议</div>
+          </div>
+        </div>
+        <div class="cardBody">
+          <div class="hint">
+            1) 管理台鉴权用 <span class="kbd">ADMIN_KEY</span>（仅保护 <span class="kbd">/admin</span> 与 <span class="kbd">/admin/api/*</span>）<br/>
+            2) Zeabur 建议挂载 Volume 到 <span class="kbd">/app/data</span>，持久化 <span class="kbd">accounts.json</span> 与 <span class="kbd">register.log</span><br/>
+            3) 账号池为空时，API 应返回 <span class="kbd">503</span>（而不是让服务退出）<br/>
+            4) 若注册浏览器启动失败，可在注册脚本加入 <span class="kbd">--no-sandbox</span> 与 <span class="kbd">--disable-dev-shm-usage</span>
+          </div>
+        </div>
+      </section>
     </div>
-  </section>
-</main>
+  </div>
+
+  <div class="toast" id="toast"></div>
 
 <script>
   const keyFromUrl = new URLSearchParams(location.search).get("key");
   if (keyFromUrl) document.getElementById("adminkey").value = keyFromUrl;
 
+  let autoScroll = true;
+
+  function toast(msg, ok=true){
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.borderColor = ok ? "rgba(135,243,198,.35)" : "rgba(255,107,122,.35)";
+    t.classList.add("show");
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(()=>t.classList.remove("show"), 2200);
+  }
+
+  function setDot(id, state){
+    const el = document.getElementById(id);
+    el.className = "dot " + (state || "warn");
+  }
+
   function adminHeaders() {
     const k = document.getElementById("adminkey").value.trim();
     return k ? {"X-Admin-Key": k} : {};
   }
+
   async function j(url, opt={}) {
     const r = await fetch(url, {...opt, headers: {...(opt.headers||{}), ...adminHeaders()}});
     const t = await r.text();
@@ -90,36 +344,66 @@
     return data;
   }
 
+  function updateTop(statusData, regState){
+    // service
+    if (statusData){
+      setDot("dotService", "ok");
+      document.getElementById("svcText").textContent = "服务状态：在线";
+      const total = (statusData.total ?? statusData.accounts?.length ?? 0);
+      const avail = (statusData.available ?? 0);
+      document.getElementById("poolText").textContent = `账号：${total} / 可用：${avail}`;
+      setDot("dotPool", total > 0 ? "ok" : "warn");
+    } else {
+      setDot("dotService", "bad");
+      document.getElementById("svcText").textContent = "服务状态：离线";
+      setDot("dotPool", "warn");
+    }
+
+    // register
+    if (regState){
+      if (regState.running){
+        setDot("dotReg","warn");
+        document.getElementById("regText").textContent = "注册：运行中";
+      } else if (regState.exit_code === 0){
+        setDot("dotReg","ok");
+        document.getElementById("regText").textContent = "注册：已完成";
+      } else if (regState.exit_code != null){
+        setDot("dotReg","bad");
+        document.getElementById("regText").textContent = "注册：失败/已退出";
+      } else {
+        setDot("dotReg","warn");
+        document.getElementById("regText").textContent = "注册：空闲";
+      }
+    } else {
+      setDot("dotReg","warn");
+      document.getElementById("regText").textContent = "注册：未知";
+    }
+  }
+
   async function loadAccounts(){
     try{
       const data = await j("/admin/api/accounts");
       document.getElementById("accounts").value = JSON.stringify(data, null, 2);
       document.getElementById("accountsMsg").innerHTML = '<span class="ok">已加载</span>';
+      toast("已加载账号池", true);
     }catch(e){
       document.getElementById("accountsMsg").innerHTML = '<span class="bad">加载失败：</span>'+e.message;
+      toast("加载账号池失败", false);
     }
   }
+
   async function saveAccounts(){
     try{
       const text = document.getElementById("accounts").value;
       const obj = JSON.parse(text);
       await j("/admin/api/accounts", {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(obj)});
       document.getElementById("accountsMsg").innerHTML = '<span class="ok">已保存</span>';
+      toast("已保存账号池", true);
+      await refreshStatusOnly();
     }catch(e){
       document.getElementById("accountsMsg").innerHTML = '<span class="bad">保存失败：</span>'+e.message;
+      toast("保存失败：JSON 格式不正确或后端错误", false);
     }
-  }
-
-  let logTimer = null;
-  function stopLog(){ if(logTimer){ clearInterval(logTimer); logTimer=null; } }
-  function startLog(){
-    stopLog();
-    logTimer = setInterval(async ()=>{
-      try{
-        const data = await j("/admin/api/register/log");
-        document.getElementById("log").textContent = data.log || "";
-      }catch(e){}
-    }, 1000);
   }
 
   async function startRegister(){
@@ -128,9 +412,11 @@
       const c = parseInt(document.getElementById("c").value||"2",10);
       await j("/admin/api/register/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({n,c})});
       document.getElementById("log").textContent = "已启动注册任务，正在拉取日志...\n";
+      toast("已启动注册", true);
       startLog();
     }catch(e){
       document.getElementById("log").textContent = "启动失败: "+e.message;
+      toast("启动注册失败", false);
     }
   }
 
@@ -138,28 +424,101 @@
     try{
       const r = await j("/admin/api/register/sync",{method:"POST"});
       document.getElementById("syncMsg").innerHTML = '<span class="ok">'+(r.message||"同步完成")+'</span>';
+      toast("同步完成", true);
+      await loadAccounts();
+      await refreshStatusOnly();
     }catch(e){
       document.getElementById("syncMsg").innerHTML = '<span class="bad">同步失败：</span>'+e.message;
+      toast("同步失败", false);
     }
   }
 
   async function callStatus(){
-    try{ document.getElementById("apiOut").textContent = JSON.stringify(await j("/status"),null,2); }
-    catch(e){ document.getElementById("apiOut").textContent = e.message; }
+    try{
+      const data = await j("/status");
+      document.getElementById("apiOut").textContent = JSON.stringify(data,null,2);
+      updateTop(data, null);
+      toast("status OK", true);
+    }catch(e){
+      document.getElementById("apiOut").textContent = e.message;
+      updateTop(null, null);
+      toast("status 失败", false);
+    }
   }
+
   async function callModels(){
-    try{ document.getElementById("apiOut").textContent = JSON.stringify(await j("/v1/models"),null,2); }
-    catch(e){ document.getElementById("apiOut").textContent = e.message; }
+    try{
+      const data = await j("/v1/models");
+      document.getElementById("apiOut").textContent = JSON.stringify(data,null,2);
+      toast("models OK", true);
+    }catch(e){
+      document.getElementById("apiOut").textContent = e.message;
+      toast("models 失败（可能需要 API_KEY）", false);
+    }
   }
+
   async function callChat(){
     try{
       const body = {"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"你好"}],"stream":false};
       const r = await fetch("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      document.getElementById("apiOut").textContent = await r.text();
-    }catch(e){ document.getElementById("apiOut").textContent = e.message; }
+      const t = await r.text();
+      document.getElementById("apiOut").textContent = t;
+      toast("chat 返回完成", r.ok);
+    }catch(e){
+      document.getElementById("apiOut").textContent = e.message;
+      toast("chat 失败", false);
+    }
   }
 
-  async function loadAll(){ await loadAccounts(); await callStatus(); startLog(); }
+  let logTimer = null;
+
+  function toggleAutoscroll(){
+    autoScroll = !autoScroll;
+    document.getElementById("autoBtn").textContent = "自动滚动：" + (autoScroll ? "开" : "关");
+    toast("自动滚动 " + (autoScroll ? "已开启" : "已关闭"), true);
+  }
+
+  function stopLog(){
+    if(logTimer){ clearInterval(logTimer); logTimer=null; }
+  }
+
+  function startLog(){
+    stopLog();
+    logTimer = setInterval(async ()=>{
+      try{
+        const data = await j("/admin/api/register/log");
+        const logEl = document.getElementById("log");
+        logEl.textContent = data.log || "";
+        updateTop(null, data.state || null);
+        if (autoScroll) logEl.scrollTop = logEl.scrollHeight;
+      }catch(e){}
+    }, 1000);
+  }
+
+  async function refreshStatusOnly(){
+    try{
+      const data = await j("/status");
+      updateTop(data, null);
+    }catch(e){
+      updateTop(null, null);
+    }
+  }
+
+  async function loadAll(){
+    await refreshStatusOnly();
+    await loadAccounts();
+    startLog();
+  }
+
+  // 快捷键：Ctrl/⌘+S 保存
+  window.addEventListener("keydown", (e)=>{
+    const isMac = navigator.platform.toLowerCase().includes("mac");
+    if ((isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase()==="s"){
+      e.preventDefault();
+      saveAccounts();
+    }
+  });
+
   loadAll();
 </script>
 </body>
