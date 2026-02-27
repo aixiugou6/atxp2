@@ -33,7 +33,7 @@
       <button onclick="loadAccounts()">加载</button>
       <button onclick="saveAccounts()">保存</button>
     </div>
-    <div class="hint">提示：初始可用仓库自带示例 data/accounts.example.json。:contentReference[oaicite:4]{index=4}</div>
+    <div class="hint">首次可保持为 []，之后点击“注册”会生成 results/accounts_*.json，再点“同步”写入账号池。</div>
     <textarea id="accounts"></textarea>
     <div id="accountsMsg" class="hint"></div>
   </section>
@@ -46,7 +46,6 @@
       <button onclick="startRegister()">开始注册</button>
       <button onclick="stopLog()">暂停日志</button>
     </div>
-    <div class="hint">register.py 使用 Playwright + Chromium 自动化注册。:contentReference[oaicite:5]{index=5}</div>
     <pre id="log"></pre>
     <div class="row">
       <button onclick="syncAccounts()">把最新 results/accounts_*.json 同步到 /app/data/accounts.json</button>
@@ -61,15 +60,15 @@
       <button onclick="callModels()">/v1/models</button>
       <button onclick="callChat()">/v1/chat/completions</button>
     </div>
-    <div class="hint">/status 不需要 API_KEY；/v1/* 若启用了 API_KEY 需带 Bearer。:contentReference[oaicite:6]{index=6}</div>
     <pre id="apiOut"></pre>
   </section>
 
   <section class="card">
-    <div style="font-weight:700">快捷说明</div>
+    <div style="font-weight:700">说明</div>
     <div class="hint">
-      1) 管理台鉴权用 ADMIN_KEY（仅影响 /admin/api/*，不影响你对外的 /v1/* 鉴权策略）<br/>
-      2) 建议 Zeabur 挂载 Volume 到 /app/data 以持久化 accounts.json（Zeabur Volumes 挂载目录重启后不丢数据，但首次挂载会清空目录内容）。:contentReference[oaicite:7]{index=7}
+      1) 管理台需要 ADMIN_KEY（只保护 /admin 与 /admin/api/*）<br/>
+      2) Zeabur 请挂载 Volume 到 /app/data 持久化 accounts.json 与 register.log<br/>
+      3) /v1/* 是否需要 API_KEY 取决于你原项目逻辑（不改也行）
     </div>
   </section>
 </main>
@@ -119,9 +118,7 @@
       try{
         const data = await j("/admin/api/register/log");
         document.getElementById("log").textContent = data.log || "";
-      }catch(e){
-        // 静默
-      }
+      }catch(e){}
     }, 1000);
   }
 
