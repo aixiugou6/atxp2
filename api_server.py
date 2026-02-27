@@ -590,8 +590,7 @@ def create_app(accounts_file: str, api_key: str = "") -> web.Application:
     if pool.load() == 0:
         logger.error("无可用账号")
         sys.exit(1)
-
-    app = web.Application(middlewares=[auth_middleware])
+    app = web.Application(middlewares=[admin_auth_middleware, auth_middleware])
     app["pool"] = pool
     app["api_key"] = api_key
     app.on_startup.append(on_startup)
