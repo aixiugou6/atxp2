@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ATXP2 管理台</title>
+  <style>
+    body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:0;background:#0b1020;color:#e6e9f2}
+    header{padding:14px 18px;border-bottom:1px solid #223;display:flex;gap:10px;align-items:center}
+    header input{flex:1;max-width:520px;padding:10px;border-radius:10px;border:1px solid #223;background:#0f1630;color:#e6e9f2}
+    header button{padding:10px 12px;border-radius:10px;border:1px solid #223;background:#1a2550;color:#e6e9f2;cursor:pointer}
+    main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
+    .card{background:#0f1630;border:1px solid #223;border-radius:14px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    textarea{width:100%;min-height:260px;border-radius:12px;border:1px solid #223;background:#0b1020;color:#e6e9f2;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    pre{background:#0b1020;border:1px solid #223;border-radius:12px;padding:10px;white-space:pre-wrap;word-break:break-word;min-height:200px}
+    .hint{opacity:.8;font-size:12px;line-height:1.5}
+    .ok{color:#9ef0b2}.bad{color:#ff9aa8}
+    input.small{width:90px}
+  </style>
+</head>
+<body>
+<header>
+  <div style="font-weight:700">ATXP2 管理台</div>
+  <input id="adminkey" placeholder="ADMIN_KEY（或用 ?key=xxx 打开）" />
+  <button onclick="loadAll()">刷新</button>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row">
+      <div style="font-weight:700">账号池（/app/data/accounts.json）</div>
+      <button onclick="loadAccounts()">加载</button>
+      <button onclick="saveAccounts()">保存</button>
+    </div>
+    <div class="hint">提示：初始可用仓库自带示例 data/accounts.example.json。:contentReference[oaicite:4]{index=4}</div>
+    <textarea id="accounts"></textarea>
+    <div id="accountsMsg" class="hint"></div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <div style="font-weight:700">一键注册（register.py）</div>
+      <label>数量 n <input class="small" id="n" type="number" value="5"></label>
+      <label>并发 c <input class="small" id="c" type="number" value="2"></label>
+      <button onclick="startRegister()">开始注册</button>
+      <button onclick="stopLog()">暂停日志</button>
+    </div>
+    <div class="hint">register.py 使用 Playwright + Chromium 自动化注册。:contentReference[oaicite:5]{index=5}</div>
+    <pre id="log"></pre>
+    <div class="row">
+      <button onclick="syncAccounts()">把最新 results/accounts_*.json 同步到 /app/data/accounts.json</button>
+      <span id="syncMsg" class="hint"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="font-weight:700">API 测试</div>
+    <div class="row">
+      <button onclick="callStatus()">/status</button>
+      <button onclick="callModels()">/v1/models</button>
+      <button onclick="callChat()">/v1/chat/completions</button>
+    </div>
+    <div class="hint">/status 不需要 API_KEY；/v1/* 若启用了 API_KEY 需带 Bearer。:contentReference[oaicite:6]{index=6}</div>
+    <pre id="apiOut"></pre>
+  </section>
+
+  <section class="card">
+    <div style="font-weight:700">快捷说明</div>
+    <div class="hint">
+      1) 管理台鉴权用 ADMIN_KEY（仅影响 /admin/api/*，不影响你对外的 /v1/* 鉴权策略）<br/>
+      2) 建议 Zeabur 挂载 Volume 到 /app/data 以持久化 accounts.json（Zeabur Volumes 挂载目录重启后不丢数据，但首次挂载会清空目录内容）。:contentReference[oaicite:7]{index=7}
+    </div>
+  </section>
+</main>
+
+<script>
+  const keyFromUrl = new URLSearchParams(location.search).get("key");
+  if (keyFromUrl) document.getElementById("adminkey").value = keyFromUrl;
+
+  function adminHeaders() {
+    const k = document.getElementById("adminkey").value.trim();
+    return k ? {"X-Admin-Key": k} : {};
+  }
+  async function j(url, opt={}) {
+    const r = await fetch(url, {...opt, headers: {...(opt.headers||{}), ...adminHeaders()}});
+    const t = await r.text();
+    let data;
+    try { data = JSON.parse(t); } catch { data = t; }
+    if (!r.ok) throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+    return data;
+  }
+
+  async function loadAccounts(){
+    try{
+      const data = await j("/admin/api/accounts");
+      document.getElementById("accounts").value = JSON.stringify(data, null, 2);
+      document.getElementById("accountsMsg").innerHTML = '<span class="ok">已加载</span>';
+    }catch(e){
+      document.getElementById("accountsMsg").innerHTML = '<span class="bad">加载失败：</span>'+e.message;
+    }
+  }
+  async function saveAccounts(){
+    try{
+      const text = document.getElementById("accounts").value;
+      const obj = JSON.parse(text);
+      await j("/admin/api/accounts", {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(obj)});
+      document.getElementById("accountsMsg").innerHTML = '<span class="ok">已保存</span>';
+    }catch(e){
+      document.getElementById("accountsMsg").innerHTML = '<span class="bad">保存失败：</span>'+e.message;
+    }
+  }
+
+  let logTimer = null;
+  function stopLog(){ if(logTimer){ clearInterval(logTimer); logTimer=null; } }
+  function startLog(){
+    stopLog();
+    logTimer = setInterval(async ()=>{
+      try{
+        const data = await j("/admin/api/register/log");
+        document.getElementById("log").textContent = data.log || "";
+      }catch(e){
+        // 静默
+      }
+    }, 1000);
+  }
+
+  async function startRegister(){
+    try{
+      const n = parseInt(document.getElementById("n").value||"5",10);
+      const c = parseInt(document.getElementById("c").value||"2",10);
+      await j("/admin/api/register/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({n,c})});
+      document.getElementById("log").textContent = "已启动注册任务，正在拉取日志...\n";
+      startLog();
+    }catch(e){
+      document.getElementById("log").textContent = "启动失败: "+e.message;
+    }
+  }
+
+  async function syncAccounts(){
+    try{
+      const r = await j("/admin/api/register/sync",{method:"POST"});
+      document.getElementById("syncMsg").innerHTML = '<span class="ok">'+(r.message||"同步完成")+'</span>';
+    }catch(e){
+      document.getElementById("syncMsg").innerHTML = '<span class="bad">同步失败：</span>'+e.message;
+    }
+  }
+
+  async function callStatus(){
+    try{ document.getElementById("apiOut").textContent = JSON.stringify(await j("/status"),null,2); }
+    catch(e){ document.getElementById("apiOut").textContent = e.message; }
+  }
+  async function callModels(){
+    try{ document.getElementById("apiOut").textContent = JSON.stringify(await j("/v1/models"),null,2); }
+    catch(e){ document.getElementById("apiOut").textContent = e.message; }
+  }
+  async function callChat(){
+    try{
+      const body = {"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"你好"}],"stream":false};
+      const r = await fetch("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      document.getElementById("apiOut").textContent = await r.text();
+    }catch(e){ document.getElementById("apiOut").textContent = e.message; }
+  }
+
+  async function loadAll(){ await loadAccounts(); await callStatus(); startLog(); }
+  loadAll();
+</script>
+</body>
+</html>
