@@ -618,3 +618,20 @@ if __name__ == "__main__":
         logger.info("API key 认证已启用")
     logger.info("ATXP 2API 启动: %s:%d", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None)
+
+# ====== Admin 配置（新增）======
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")  # 为空则禁用 admin 鉴权（不建议）
+
+def _check_admin(request: web.Request) -> bool:
+    if not ADMIN_KEY:
+        return True
+    k = request.headers.get("X-Admin-Key") or request.query.get("key") or ""
+    return k == ADMIN_KEY
+
+@web.middleware
+async def admin_auth_middleware(request: web.Request, handler):
+    # 只保护 /admin 和 /admin/api
+    if request.path.startswith("/admin"):
+        if not _check_admin(request):
+            return web.json_response({"error": "Invalid ADMIN_KEY"}, status=401)
+    return await handler(request)
